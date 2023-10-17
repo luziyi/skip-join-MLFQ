@@ -6,7 +6,7 @@ import threading
 import numpy as np
 import queue
 thread_pool = ThreadPoolExecutor(max_workers=3)
-
+lock = threading.Lock() # 线程锁 确保同一时间只有一个线程在访问全局数据
 JOB_NUM = 100  # 发送请求的个数
 
 #初始化请求队列
@@ -18,29 +18,18 @@ first_time = [5.88, 5.93, 6.57, 8.04, 23.8, 43.9, 98.5]
 next_time = [5.13, 5.11, 5.16, 5.22, 5.52, 5.72, 5.82]
 
 # 通过实验数据拟合每次迭代推理时间
-z1 = np.polyfit(x, first_time, 1)
+z1 = np.polyfit(x, first_time, 2)
 p1 = np.poly1d(z1)
 
 z2 = np.polyfit(x, next_time, 1)
 p2 = np.poly1d(z2)
 #定义first_iter_time和next_iter_time的拟合函数
 def fit_first_iter_time(prompt_length):
-    return p1(prompt_length)
+    return p1(float(prompt_length))
 def fit_next_iter_time(prompt_length):
-    return p2(prompt_length)
+    return p2(float(prompt_length))
 
 
-class Request:  # 推理请求，理论上输出长度未知，但为仿真实验，需要事先确定
-    def __init__(self, j_id, prompt_length, output_length):
-        self.j_id = j_id
-        self.prompt_length = int(prompt_length)
-        self.output_length = int(output_length)
-        self.first_iter_time = fit_first_iter_time(prompt_length)
-        self.next_iter_time  = fit_next_iter_time(prompt_length)
-        self.iter_count = 0 # 请求执行了几次迭代，iter_count==output_length时完成整个推理   
-        self.priority = -1  # 请求目前处于第几级队列
-        
-        self.create_time = time.time()  # 请求创建时间
         
 class RequestGenerator(threading.Thread):
 
@@ -53,7 +42,7 @@ class RequestGenerator(threading.Thread):
         output_length_list = []
         
         # 此处为读取orca数据集中的数据来构造request，可自行修改路径
-        f = open('/orca_100k.csv', 'r')
+        f = open('./orca_100k.csv', 'r')
         count=0
         with f:
             reader = csv.reader(f)
@@ -68,43 +57,76 @@ class RequestGenerator(threading.Thread):
         j_id = 0
 
         while j_id < JOB_NUM:
-            output_ = output_length_list[j_id]
-            input_ = prompt_length_list[j_id]
-            request = Request(j_id, input_, output_) # 创建新的请求  
-            request_queue.put(request)
-            j_id += 1
-            time.sleep(1 / self.arrival_rate)
+            if j_id < len(output_length_list):
+                output_ = output_length_list[j_id]
+                input_ = prompt_length_list[j_id]
+                request = Request(j_id, input_, output_) # 创建新的请求  
+                request_queue.put(request)
+                j_id += 1
+                time.sleep(1 / self.arrival_rate)
+            else:
+                break
+class Request:  # 初始化请求类，所有请求对象都是这个类的实例
+    def __init__(self, j_id, prompt_length, output_length):
+        self.j_id = j_id
+        self.prompt_length = int(prompt_length)
+        self.output_length = int(output_length)
+        self.first_iter_time = fit_first_iter_time(prompt_length)
+        self.next_iter_time  = fit_next_iter_time(prompt_length)
+        self.iter_count = 0 # 请求执行了几次迭代，iter_count==output_length时完成整个推理   
+        self.priority = -1  # 请求目前处于第几级队列
+        self.create_time = time.time()  # 请求创建时间
 
 
 #skip-join mlfq调度器示例代码
-# Define class
 class SkipJoinMLFQScheduler:
 
     def __init__(self, first_quantum=6, quantum_rate=4, queue_num=4): 
-        # super().__init__() 
+        # super().__init__()  #初始化父类 
         self.quantum_list = [] # 每个队列的时间片大小
         self.multi_level_priority_queue = [] # 多级队列
         self.executed = 0  # 已经完成的请求数量
 
         #第一级队列的最小迭代时间
         for i in range(queue_num):
-            self.quantum_list.append(quantum_rate ** i)
-            temp_q = queue.Queue(-1)              
-            self.multi_level_priority_queue.append(temp_q)
+            self.quantum_list.append(quantum_rate ** i) # 每个队列的时间片大小
+            temp_q = queue.Queue(-1)            #初始化每个队列  
+            self.multi_level_priority_queue.append(temp_q) # 多级队列
             
         self.ave_jct = []
 
     def getNewRequest(self, request: Request):
-        # Todo: 处理缓冲区中新到达的request，根据他们的输入长度放入多级队列中
-        pass
-    
+        # 处理新到达的请求，根据输入长度将其放入多级队列中
+        if request.iter_count == 0:
+            infer_time = request.first_iter_time
+        else:
+            infer_time = request.next_iter_time
+        for i in range(len(self.quantum_list)):
+            if infer_time <= self.quantum_list[i]:
+                priority=i
+            else:
+                priority = len(self.quantum_list) - 1
+        request.priority = priority
+        self.multi_level_priority_queue[priority].put(request)
+
     def demoteRequest(self, job):
-        # Todo: 将完成了推理但还没生成完毕的请求放入下一级队列
-        pass
-    
+        # 将完成了推理但还没生成完毕的请求放入下一级队列
+        current_priority = job.priority
+        if current_priority < len(self.multi_level_priority_queue) - 1:
+            next_priority = current_priority + 1
+            self.multi_level_priority_queue[next_priority].put(job)
+        job.priority = next_priority
+
     def getInferenceJob(self):
-        # Todo: 返回在最高优先级的队列中的队首请求
-        pass
+        # 返回在最高优先级的队列中的队首请求
+        for queue in self.multi_level_priority_queue:
+            if not queue.empty():
+                return queue.queue[0]
+        return None
+
+    def calculatePriority(self, iter_count):
+
+        return len(self.quantum_list) - 1
         
 # 推理线程
 def run(scheduler):
@@ -115,14 +137,16 @@ def run(scheduler):
 
         job = scheduler.getInferenceJob()
 
-        if job.iter_count == 0:
-            iter_time = job.first_iter_time
-        else:
-            iter_time = job.next_iter_time
+        if job is not None:
+            with lock:
+                if job.iter_count == 0:
+                    iter_time = job.first_iter_time
+                else:
+                    iter_time = job.next_iter_time
 
-        args = [iter_time, job, scheduler]
+            args = [iter_time, job, scheduler]
         # 调用模拟推理线程
-        temp_thread = thread_pool.submit(lambda p: simulate_forward(*p), args)
+            temp_thread = thread_pool.submit(lambda p: simulate_forward(*p), args)
 
 
 #用于模拟过程推理的函数
@@ -155,7 +179,7 @@ if __name__ == '__main__':
     generator = RequestGenerator(arrival_rate=800)
     generator.start()#把请求的对象放入request_queue中
     
-    # 定义并启动调度器线程
+    # 定义并启动调度器线程 这里定义了一个skip-join mlfq调度器 并且给出了第一个时间片大小，时间片增长率，队列数量
     scheduler = SkipJoinMLFQScheduler(first_quantum=1,
                                       quantum_rate=2,
                                       queue_num=4)
