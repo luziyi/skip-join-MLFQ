@@ -117,21 +117,22 @@ class SkipJoinMLFQScheduler:
 
     def getInferenceJob(self):
         # 返回在最高优先级的队列中的队首请求
-        # 将多级队列中的所有任务输出
         
         for i in range(len(self.multi_level_priority_queue)):
             if not self.multi_level_priority_queue[i].empty():
                 return self.multi_level_priority_queue[i].get()
+        print("All queues are empty.")
+        return None
 # 推理线程
 def run(scheduler):
     while scheduler.executed != JOB_NUM:
         for i in range(request_queue.qsize()): 
             req = request_queue.get()
             scheduler.getNewRequest(req)
-
         job = scheduler.getInferenceJob()
         
         if job == None:
+            print("No job to execute.")
             continue
         else:
             with lock:
@@ -182,3 +183,4 @@ if __name__ == '__main__':
                                       quantum_rate=4,
                                       queue_num=8)
     run(scheduler)
+    
