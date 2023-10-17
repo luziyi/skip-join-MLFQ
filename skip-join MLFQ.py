@@ -9,6 +9,9 @@ thread_pool = ThreadPoolExecutor(max_workers=3)
 
 JOB_NUM = 100  # 发送请求的个数
 
+#初始化请求队列
+request_queue = queue.Queue(-1)
+
 # 在opt-1.3B上的实验数据 单位: ms
 x = [1, 4, 16, 64, 256, 512, 1024]
 first_time = [5.88, 5.93, 6.57, 8.04, 23.8, 43.9, 98.5]
@@ -20,6 +23,12 @@ p1 = np.poly1d(z1)
 
 z2 = np.polyfit(x, next_time, 1)
 p2 = np.poly1d(z2)
+#定义first_iter_time和next_iter_time的拟合函数
+def fit_first_iter_time(prompt_length):
+    return p1(prompt_length)
+def fit_next_iter_time(prompt_length):
+    return p2(prompt_length)
+
 
 class Request:  # 推理请求，理论上输出长度未知，但为仿真实验，需要事先确定
     def __init__(self, j_id, prompt_length, output_length):
@@ -37,7 +46,7 @@ class RequestGenerator(threading.Thread):
 
     def __init__(self, arrival_rate):
         super().__init__()
-        self.arrival_rate = arrival_rate  # arrival rate = 1s / job interval
+        self.arrival_rate = arrival_rate  # 每秒到达的请求数量=1/平均间隔时间
         
     def run(self):
         prompt_length_list = []
@@ -71,16 +80,16 @@ class RequestGenerator(threading.Thread):
 # Define class
 class SkipJoinMLFQScheduler:
 
-    def __init__(self, first_quantum=6, quantum_rate=4, queue_num=4):
+    def __init__(self, first_quantum=6, quantum_rate=4, queue_num=4): 
         # super().__init__() 
-        self.quantum_list = []
-        self.multi_level_priority_queue = []
+        self.quantum_list = [] # 每个队列的时间片大小
+        self.multi_level_priority_queue = [] # 多级队列
         self.executed = 0  # 已经完成的请求数量
 
         #第一级队列的最小迭代时间
         for i in range(queue_num):
             self.quantum_list.append(quantum_rate ** i)
-            temp_q = queue.Queue(-1) 
+            temp_q = queue.Queue(-1)              
             self.multi_level_priority_queue.append(temp_q)
             
         self.ave_jct = []
