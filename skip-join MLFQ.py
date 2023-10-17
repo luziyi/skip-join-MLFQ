@@ -114,7 +114,7 @@ class SkipJoinMLFQScheduler:
         current_priority = job.priority
         if current_priority < len(self.multi_level_priority_queue) - 1:
             next_priority = current_priority + 1
-            self.multi_level_priority_queue[next_priority].put(job)
+            self.multi_level_priority_queue[next_priority].put(job) #在下一级队列中加入该请求
         job.priority = next_priority
 
     def getInferenceJob(self):
@@ -123,10 +123,6 @@ class SkipJoinMLFQScheduler:
             if not queue.empty():
                 return queue.queue[0]
         return None
-
-    def calculatePriority(self, iter_count):
-
-        return len(self.quantum_list) - 1
         
 # 推理线程
 def run(scheduler):
@@ -136,8 +132,9 @@ def run(scheduler):
             scheduler.getNewRequest(req)
 
         job = scheduler.getInferenceJob()
-
-        if job is not None:
+        if job is None:
+            print("Job Finished! No job in queue")
+        else:
             with lock:
                 if job.iter_count == 0:
                     iter_time = job.first_iter_time
@@ -147,6 +144,8 @@ def run(scheduler):
             args = [iter_time, job, scheduler]
         # 调用模拟推理线程
             temp_thread = thread_pool.submit(lambda p: simulate_forward(*p), args)
+        thread_pool.shutdown(wait=True)
+
 
 
 #用于模拟过程推理的函数
@@ -154,7 +153,7 @@ def simulate_forward(iteration_time, job, scheduler):
     
     iteration_num = scheduler.quantum_list[job.priority]  # 获取当前任务在这次推理中需要执行多少轮
     
-    if iteration_num >= job.output_length - job.iter_count:
+    if iteration_num >= job.output_length - job.iter_count:#job任务执行结束，任务完成
         iteration_num = job.output_length - job.iter_count
 
         for i in range(iteration_num):
@@ -163,10 +162,10 @@ def simulate_forward(iteration_time, job, scheduler):
 
         jct = time.time() - job.create_time                     
         scheduler.ave_jct.append(jct)
-        
         scheduler.executed += 1
         
-    else:
+        
+    else:#任务未结束，需要进入下一级队列
         for i in range(iteration_num):
             time.sleep(iteration_time / 1000)  # ms
             job.iter_count += 1
