@@ -5,10 +5,10 @@ import time
 import threading
 import numpy as np
 import queue
-thread_pool = ThreadPoolExecutor(max_workers=3)
+thread_pool = ThreadPoolExecutor(max_workers=1)
 lock = threading.Lock() # 线程锁 确保同一时间只有一个线程在访问全局数据
 JOB_NUM = 99  # 发送请求的个数
-
+time_n=0.0
 #初始化请求队列
 request_queue = queue.Queue(-1)
 
@@ -136,7 +136,6 @@ def run(scheduler):
         for i in range(request_queue.qsize()): 
             req = request_queue.get()
             scheduler.getNewRequest(req)
-        time.sleep(0.001)
         job = scheduler.getInferenceJob()
         if job == None:
             #print("No job to execute.")
@@ -144,7 +143,7 @@ def run(scheduler):
         else:
             first_iter_time=job.first_iter_time
             next_iter_time=job.next_iter_time
-            args = [first_iter_time,next_iter_time, job, scheduler]
+            args = [first_iter_time,next_iter_time, job, scheduler,time_n]
             # 调用模拟推理线程
             temp_thread = thread_pool.submit(lambda p: simulate_forward(*p), args)
     thread_pool.shutdown(wait=True)
@@ -152,16 +151,15 @@ def run(scheduler):
 
 
 #用于模拟过程推理的函数
-def simulate_forward(first_iter_time,next_iter_time, job, scheduler):
+def simulate_forward(first_iter_time,next_iter_time, job, scheduler,time_n):
     scheduler.execution_order.append(job.j_id)
+    #print("first_iter_time: %f  next_iter_time: %f" % (first_iter_time/10000, next_iter_time*job.output_length/10000))
     iteration_num = job.output_length - 1
-    time.sleep(first_iter_time / 1000)  # ms
-    for i in range(iteration_num):
-        time.sleep(next_iter_time / 1000)  # ms
+    time_n += first_iter_time/1000 + next_iter_time*iteration_num/1000
     job.iter_count = job.output_length
-    jct = time.time() - job.create_time
-    print(round(jct, 2))
-    scheduler.ave_jct.append(round(jct, 2))
+    jct = time_n
+    #print(jct)
+    scheduler.ave_jct.append(jct)
     #print(scheduler.ave_jct)
     scheduler.executed += 1
 
@@ -169,15 +167,18 @@ def simulate_forward(first_iter_time,next_iter_time, job, scheduler):
 #主程序启动示例代码
 if __name__ == '__main__':
     # 定义并启动发送请求的用户线程
-    generator = RequestGenerator(arrival_rate=10)
+    generator = RequestGenerator(arrival_rate=100)
     generator.start()#把请求的对象放入request_queue中
 
-
+    first_quantum=100000
+    quantum_rate=1
+    queue_num=1
     # 定义并启动调度器线程 这里定义了一个skip-join mlfq调度器 并且给出了第一个时间片大小，时间片增长率，队列数量
-    scheduler = SkipJoinMLFQScheduler(first_quantum=1,
-                                      quantum_rate=1,
-                                      queue_num=1)
+    scheduler = SkipJoinMLFQScheduler(first_quantum,quantum_rate,queue_num)
+    for i in range(request_queue.qsize()): 
+        req = request_queue.get()
+        scheduler.getNewRequest(req)
     run(scheduler)
-    
-    #print("execution order: ", scheduler.execution_order)
+    print("FCFS:")
     print("average jct: ", sum(scheduler.ave_jct) / len(scheduler.ave_jct))
+    #print("execution order: ", scheduler.execution_order)
