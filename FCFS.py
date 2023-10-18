@@ -8,6 +8,7 @@ import queue
 thread_pool = ThreadPoolExecutor(max_workers=1)
 lock = threading.Lock() # 线程锁 确保同一时间只有一个线程在访问全局数据
 JOB_NUM = 99  # 发送请求的个数
+global time_n
 time_n=0.0
 #初始化请求队列
 request_queue = queue.Queue(-1)
@@ -40,7 +41,8 @@ class RequestGenerator(threading.Thread):
     def run(self):
         prompt_length_list = []
         output_length_list = []
-        
+        global time_n
+        time_n=0.0
         # 此处为读取orca数据集中的数据来构造request，可自行修改路径
         f = open('./orca_100k.csv', 'r')
         count=0
@@ -64,7 +66,7 @@ class RequestGenerator(threading.Thread):
                     request = Request(j_id, input_, output_) # 创建新的请求  
                     request_queue.put(request)
                     j_id += 1
-                    time.sleep(1 / self.arrival_rate)
+                    time_n += 1 / self.arrival_rate
                 else:
                     break
 class Request:  # 初始化请求类，所有请求对象都是这个类的实例
@@ -167,7 +169,7 @@ def simulate_forward(first_iter_time,next_iter_time, job, scheduler,time_n):
 #主程序启动示例代码
 if __name__ == '__main__':
     # 定义并启动发送请求的用户线程
-    generator = RequestGenerator(arrival_rate=100)
+    generator = RequestGenerator(arrival_rate=10)
     generator.start()#把请求的对象放入request_queue中
 
     first_quantum=100000
