@@ -8,7 +8,7 @@ import queue
 thread_pool = ThreadPoolExecutor(max_workers=3)
 lock = threading.Lock() # 线程锁 确保同一时间只有一个线程在访问全局数据
 JOB_NUM = 3  # 发送请求的个数
-
+first_input_ready=False
 
 
 #初始化请求队列
@@ -90,10 +90,15 @@ class SkipJoinMLFQScheduler:#skip-join mlfq调度器示例代码
         self.executed = 0  # 已经完成的请求数量
 
         #第一级队列的最小迭代时间
-        for i in range(queue_num):
-            self.quantum_list.append(quantum_rate ** i) # 每个队列的时间片大小
+        self.quantum_list.append(first_quantum)
+        temp_q = queue.Queue(-1)
+        self.multi_level_priority_queue.append(temp_q)
+        #print("quantum %d: %d" % (0,first_quantum))
+        for i in range(0,queue_num-1):
+            self.quantum_list.append(first_quantum*(quantum_rate ** (i+1))) # 每个队列的时间片大小
             temp_q = queue.Queue(-1)            #初始化每个队列  
             self.multi_level_priority_queue.append(temp_q) # 多级队列
+            #print("quantum %d: %d" % (i+1, first_quantum*(quantum_rate ** (i+1))))
         self.ave_jct = []
 
     def getNewRequest(self, request: Request):
@@ -108,8 +113,7 @@ class SkipJoinMLFQScheduler:#skip-join mlfq调度器示例代码
                     priority = len(self.quantum_list) - 1
             request.priority = priority
             self.multi_level_priority_queue[priority].put(request)
-            print("job %d, priority %d, prompt_length %d, output_length %d, first_iter_time %d, next_iter_time %d" % (request.j_id, request.priority, request.prompt_length, request.output_length, request.first_iter_time, request.next_iter_time))
-
+            #print("job %d, priority %d, prompt_length %d, output_length %d, first_iter_time %d, next_iter_time %d" % (request.j_id, request.priority, request.prompt_length, request.output_length, request.first_iter_time, request.next_iter_time))
     def demoteRequest(self, job):
         # 将完成了推理但还没生成完毕的请求放入下一级队列
         current_priority = job.priority
@@ -119,9 +123,9 @@ class SkipJoinMLFQScheduler:#skip-join mlfq调度器示例代码
 
     def getInferenceJob(self):
         # 返回在最高优先级的队列中的队首请求
-        
         for i in range(len(self.multi_level_priority_queue)):
             if not self.multi_level_priority_queue[i].empty():
+                #print("get job %d from queue %d" % (self.multi_level_priority_queue[i].queue[0].j_id, i))
                 return self.multi_level_priority_queue[i].get()
         return None
 
@@ -130,6 +134,7 @@ def run(scheduler):# 推理线程
         for i in range(request_queue.qsize()): 
             req = request_queue.get()
             scheduler.getNewRequest(req)
+        time.sleep(0.1)
         job = scheduler.getInferenceJob()
         
         if job == None:
@@ -151,17 +156,25 @@ def simulate_forward(iteration_time, job, scheduler):#用于模拟过程推理�
     iteration_num = scheduler.quantum_list[job.priority]  # 获取当前任务在这次推理中需要执行多少轮
     
     if iteration_num >= job.output_length - job.iter_count:#job任务执行结束，任务完成
-        iteration_num = job.output_length - job.iter_count
+        if job.iter_count == 0:
+            iteration_num = job.prompt_length
+            for i in range(iteration_num):
+                time.sleep(iteration_time / 1000)  # ms
+                job.iter_count += 1
+            #print("job %d demoted" % job.j_id)
+            scheduler.demoteRequest(job)
+        else:
+            iteration_num = job.output_length - job.iter_count
 
-        for i in range(iteration_num):
-            time.sleep(iteration_time / 1000)  # ms
-            job.iter_count += 1
+            for i in range(iteration_num):
+                time.sleep(iteration_time / 1000)  # ms
+                job.iter_count += 1
 
-        jct = time.time() - job.create_time                     
-        scheduler.ave_jct.append(jct)
-        #print(scheduler.ave_jct)
-        scheduler.executed += 1
-        
+            jct = time.time() - job.create_time
+            scheduler.ave_jct.append(jct)
+            #print(scheduler.ave_jct)
+            scheduler.executed += 1
+            
         
     else:#任务未结束，需要进入下一级队列
         for i in range(iteration_num):
@@ -179,7 +192,7 @@ if __name__ == '__main__':#主程序启动示例代码
     # 定义并启动调度器线程 这里定义了一个skip-join mlfq调度器 并且给出了第一个时间片大小，时间片增长率，队列数量
     scheduler = SkipJoinMLFQScheduler(first_quantum=1,
                                       quantum_rate=2,
-                                      queue_num=3)
+                                      queue_num=4)
     run(scheduler)
 
     print("execution order: ", scheduler.execution_order)
