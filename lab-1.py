@@ -8,8 +8,6 @@ import queue
 thread_pool = ThreadPoolExecutor(max_workers=3)
 lock = threading.Lock() # 线程锁 确保同一时间只有一个线程在访问全局数据
 JOB_NUM = 3  # 发送请求的个数
-first_input_ready=False
-
 
 #初始化请求队列
 request_queue = queue.Queue(-1)
@@ -157,11 +155,9 @@ def simulate_forward(iteration_time, job, scheduler):#用于模拟过程推理�
     
     if iteration_num >= job.output_length - job.iter_count:#job任务执行结束，任务完成
         if job.iter_count == 0:
-            iteration_num = job.prompt_length
-            for i in range(iteration_num):
-                time.sleep(iteration_time / 1000)  # ms
-                job.iter_count += 1
+            time.sleep(iteration_time / 1000)  # ms
             #print("job %d demoted" % job.j_id)
+            job.iter_count += 1
             scheduler.demoteRequest(job)
         else:
             iteration_num = job.output_length - job.iter_count
@@ -171,7 +167,7 @@ def simulate_forward(iteration_time, job, scheduler):#用于模拟过程推理�
                 job.iter_count += 1
 
             jct = time.time() - job.create_time
-            scheduler.ave_jct.append(jct)
+            scheduler.ave_jct.append(round(jct, 2))
             #print(scheduler.ave_jct)
             scheduler.executed += 1
             
@@ -196,3 +192,4 @@ if __name__ == '__main__':#主程序启动示例代码
     run(scheduler)
 
     print("execution order: ", scheduler.execution_order)
+    print("average jct: ", sum(scheduler.ave_jct) / len(scheduler.ave_jct))
