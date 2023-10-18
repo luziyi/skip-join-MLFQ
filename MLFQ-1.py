@@ -139,31 +139,28 @@ def run(scheduler):# 推理线程
             continue
         else:
             with lock:
-                if job.iter_count == 0:
-                    iter_time = job.first_iter_time
-                else:
-                    iter_time = job.next_iter_time
-            args = [iter_time, job, scheduler]
+                first_iter_time=job.first_iter_time
+                next_iter_time=job.next_iter_time
+                args = [first_iter_time,next_iter_time, job, scheduler]
             # 调用模拟推理线程
-            temp_thread = thread_pool.submit(lambda p: simulate_forward(*p), args)
+                temp_thread = thread_pool.submit(lambda p: simulate_forward(*p), args)
     thread_pool.shutdown(wait=True)
 
-def simulate_forward(iteration_time, job, scheduler):#用于模拟过程推理的函数
-    iteration_num = scheduler.quantum_list[job.priority]
+def simulate_forward(first_iter_time,next_iter_time, job, scheduler):#用于模拟过程推理的函数
+    print("处理任务时：first_iter_time: %d  next_iter_time: %d", first_iter_time, next_iter_time)
     scheduler.execution_order.append(job.j_id)
     iteration_num = scheduler.quantum_list[job.priority]  # 获取当前任务在这次推理中需要执行多少轮
     
     if iteration_num >= job.output_length - job.iter_count:#job任务执行结束，任务完成
         if job.iter_count == 0:
-            time.sleep(iteration_time / 1000)  # ms
+            time.sleep(first_iter_time / 1000)  # ms
             #print("job %d demoted" % job.j_id)
             job.iter_count += 1
             scheduler.demoteRequest(job)
         else:
             iteration_num = job.output_length - job.iter_count
-
             for i in range(iteration_num):
-                time.sleep(iteration_time / 1000)  # ms
+                time.sleep(next_iter_time / 1000)  # ms
                 job.iter_count += 1
 
             jct = time.time() - job.create_time
@@ -174,7 +171,7 @@ def simulate_forward(iteration_time, job, scheduler):#用于模拟过程推理�
         
     else:#任务未结束，需要进入下一级队列
         for i in range(iteration_num):
-            time.sleep(iteration_time / 1000)  # ms
+            time.sleep(next_iter_time / 1000)  # ms
             job.iter_count += 1
         #print("job %d demoted" % job.j_id)
         scheduler.demoteRequest(job)
