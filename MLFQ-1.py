@@ -189,4 +189,4 @@ if __name__ == '__main__':#主程序启动示例代码
     run(scheduler)
 
     print("execution order: ", scheduler.execution_order)
-    print("average jct: ", sum(scheduler.ave_jct) / len(scheduler.ave_jct))
+    print("average jct: ", sum(scheduler.ave_jct) /len(scheduler.ave_jct))

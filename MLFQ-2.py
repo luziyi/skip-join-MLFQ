@@ -25,13 +25,7 @@ p1 = np.poly1d(z1)
 z2 = np.polyfit(x, next_time, 1)
 p2 = np.poly1d(z2)
 #定义first_iter_time和next_iter_time的拟合函数
-def fit_first_iter_time(prompt_length):
-    return p1(float(prompt_length))
-def fit_next_iter_time(prompt_length):
-    return p2(float(prompt_length))
 
-
-        
 class RequestGenerator(threading.Thread):
     def __init__(self, arrival_rate):
         super().__init__()
@@ -74,8 +68,8 @@ class Request:  # 初始化请求类，所有请求对象都是这个类的实�
         self.j_id = j_id
         self.prompt_length = int(prompt_length)
         self.output_length = int(output_length)
-        self.first_iter_time = fit_first_iter_time(prompt_length)
-        self.next_iter_time  = fit_next_iter_time(prompt_length)
+        self.first_iter_time = p1(self.prompt_length)
+        self.next_iter_time  = p2(self.prompt_length)
         self.iter_count = 0 # 请求执行了几次迭代，iter_count==output_length时完成整个推理   
         self.priority = -1  # 请求目前处于第几级队列
         self.create_time = time_n  # 请求创建时间

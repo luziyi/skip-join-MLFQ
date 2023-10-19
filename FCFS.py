@@ -173,6 +173,7 @@ if __name__ == '__main__':
     generator = RequestGenerator(arrival_rate=10)
     generator.start()#把请求的对象放入request_queue中
 
+
     first_quantum=100000
     quantum_rate=1
     queue_num=1
