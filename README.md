@@ -4,9 +4,9 @@
 
 &emsp;&emsp;参考论文4.1节中提出的skip-join MLFQ调度算法伪代码（论文第6页Algorithm 1），编程完成“skip-join MLFQ”调度策略仿真和实验（即不进行真实的推理，用sleep一段时间模拟推理过程；此处选用Python作为编程语言），并做实验观察调度器的性能。  
 &emsp;&emsp;此调度算法关注的指标是平均任务完成时间average JCT，即所有请求从发送到收到结果的平均时间。如下图所示，J1,J2,J3三个请求同时到达，J2的JCT为4，J3的JCT为5，J1的JCT为11，他们的平均JCT为(4+5+11)/3=6.67。  
-<img src="Resource/image.png">  
+<img src="imgs/2023-10-19_21-28-59.png">  
 &emsp;&emsp;编写仿真需要使用多线程。参考经典的Producer-Consumer模型，我们共需要3个线程，简化的流程图如下图所示：  
-<img src="Resource/image (1).png">  
+<img src="imgs/2023-10-19_21-29-10.png">  
 1. 线程1：用于发送推理请求的用户线程，需要设置发送分布，发送速率等参数。在没有发送完设置的请求数量之前，用户线程将持续以用户设置的发送速率发送请求，发送的请求可以暂时放入缓冲区内等待调度器线程调度，也可自行设置其他的方法。
 
 2. 线程2：（参考论文Algorithm 1实现）用于调度用户请求的调度器线程，需要参考论文中提出的schedule算法进行设计。多级队列包含三个参数，Queue_num, Quantum和Quantum_rate，Queue_num代表多级队列一共有多少级，即包含了多少个队列；Quantum需要设置为自回归阶段生成一个token的时间，而Quantum_rate则需要手动设置，它代表队列之间能够推理自回归阶段token数量的倍数。例如Quantum=1, Quantum_rate=2时，二级队列的Quantum即为2，代表在自回归阶段可以一次生成两个token，三级队列可以一次生成4个token。  
