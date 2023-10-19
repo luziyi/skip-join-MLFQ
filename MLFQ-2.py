@@ -62,14 +62,15 @@ class RequestGenerator(threading.Thread):
                 if j_id <= len(output_length_list):
                     output_ = output_length_list[j_id-1]
                     input_ = prompt_length_list[j_id-1]
-                    request = Request(j_id, input_, output_) # 创建新的请求  
+                    time_n += (1 / self.arrival_rate) / 100
+                    #print(time_n)
+                    request = Request(j_id, input_, output_,time_n) # 创建新的请求  
                     request_queue.put(request)
                     j_id += 1
-                    time_n += 1 / self.arrival_rate
                 else:
                     break
 class Request:  # 初始化请求类，所有请求对象都是这个类的实例
-    def __init__(self, j_id, prompt_length, output_length):
+    def __init__(self, j_id, prompt_length, output_length,time_n):
         self.j_id = j_id
         self.prompt_length = int(prompt_length)
         self.output_length = int(output_length)
@@ -77,7 +78,7 @@ class Request:  # 初始化请求类，所有请求对象都是这个类的实�
         self.next_iter_time  = fit_next_iter_time(prompt_length)
         self.iter_count = 0 # 请求执行了几次迭代，iter_count==output_length时完成整个推理   
         self.priority = -1  # 请求目前处于第几级队列
-        self.create_time = time.time()  # 请求创建时间
+        self.create_time = time_n  # 请求创建时间
 
 
 #skip-join mlfq调度器示例代码
@@ -88,7 +89,7 @@ class SkipJoinMLFQScheduler:#skip-join mlfq调度器示例代码
         self.quantum_list = [] # 每个队列的时间片大小
         self.multi_level_priority_queue = [] # 多级队列
         self.executed = 0  # 已经完成的请求数量
-
+        self.result=[]
         #第一级队列的最小迭代时间
         self.quantum_list.append(first_quantum)
         temp_q = queue.Queue(-1)
@@ -99,6 +100,9 @@ class SkipJoinMLFQScheduler:#skip-join mlfq调度器示例代码
             temp_q = queue.Queue(-1)            #初始化每个队列  
             self.multi_level_priority_queue.append(temp_q) # 多级队列
             #print("quantum %d: %d" % (i+1, first_quantum*(quantum_rate ** (i+1))))
+        self.quantum_list.append(10000000)
+        temp_q = queue.Queue(-1)
+        self.multi_level_priority_queue.append(temp_q)
         self.ave_jct = []
 
     def getNewRequest(self, request: Request):
@@ -155,7 +159,7 @@ def run(scheduler):
 
 def simulate_forward(iter_count,first_iter_time,next_iter_time, job, scheduler,time_n):#用于模拟过程推理的函数
     iteration_num = scheduler.quantum_list[job.priority]# 获取当前任务在这次推理中需要执行多少轮
-    #print("first_iter_time: %f  next_iter_time: %f" % (first_iter_time/10000, next_iter_time*job.output_length/10000))
+    #print("first_iter_time: %f  next_iter_time: %f" % (first_iter_time/1000, next_iter_time*job.output_length/1000))
     scheduler.execution_order.append(job.j_id)
     if iter_count == 0:#job任务开始执行
         time_n += first_iter_time/1000
@@ -165,15 +169,16 @@ def simulate_forward(iter_count,first_iter_time,next_iter_time, job, scheduler,t
     else:
         if iteration_num >= job.output_length - job.iter_count:#job任务执行结束，任务完成
             iteration_num = job.output_length - job.iter_count
-            time_n += next_iter_time*iteration_num / 1000
+            time_n += next_iter_time*iteration_num / 100
             job.iter_count = job.iter_count + iteration_num
             jct = time_n
             #print(jct)
-            scheduler.ave_jct.append(jct)
+            scheduler.ave_jct.append(round(jct,4))
+            scheduler.result.append((job.j_id, round(jct,4)))
             scheduler.executed += 1
             return
         else:#任务未结束，需要进入下一级队列
-            time_n += next_iter_time*iteration_num / 1000
+            time_n += next_iter_time*iteration_num / 100
             job.iter_count += iteration_num
             scheduler.demoteRequest(job)
             return
@@ -193,6 +198,12 @@ if __name__ == '__main__':
         req = request_queue.get()
         scheduler.getNewRequest(req)
     run(scheduler)
-    print("first_quantum: %d,  quantum_rate: %d, queue_num: %d" % (first_quantum, quantum_rate, queue_num))
+    print("MLFQ:")
+    print("first_quantum: %d,  quantum_rate: %d, queue_num-1: %d" % (first_quantum, quantum_rate, queue_num))
+    print("-----------------------------------------------------------------------------------------------------")
     print("average jct: ", sum(scheduler.ave_jct) / len(scheduler.ave_jct))
-    #print("execution order: ", scheduler.execution_order)
+    print("execution order: ", scheduler.execution_order)
+    print("JCT: ")
+    for result in scheduler.result:
+        print("id: {}, jct: {}".format(result[0], result[1]))
+
