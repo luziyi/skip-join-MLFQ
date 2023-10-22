@@ -1,6 +1,7 @@
 #用户请求发送线程示例代码：
 from concurrent.futures import ThreadPoolExecutor
 import csv
+import matplotlib.pyplot as plt
 import time
 import threading
 import numpy as np
@@ -201,3 +202,14 @@ if __name__ == '__main__':
     for result in scheduler.result:
         print("id: {}, jct: {}".format(result[0], result[1]))
 
+    average_jct=sum(scheduler.ave_jct) / len(scheduler.ave_jct)
+
+    job_ids = range(JOB_NUM)
+    jct_values = [scheduler.ave_jct[index] for index in job_ids]
+    arrival_rate=10
+    plt.figure(figsize=(10, 5))
+    plt.bar(job_ids, jct_values, color='skyblue')
+    plt.xlabel('Job ID')
+    plt.ylabel('JCT (seconds)')
+    plt.title('Job Completion Time (JCT) for Each Job    Average JCT: {:.2f}   arrival_rate: {:.2f}'.format(average_jct, arrival_rate))
+    plt.show()
