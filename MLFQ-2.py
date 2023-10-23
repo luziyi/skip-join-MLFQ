@@ -81,6 +81,7 @@ class SkipJoinMLFQScheduler:#skip-join mlfq调度器示例代码
     def __init__(self, first_quantum=6, quantum_rate=4, queue_num=4): 
         # super().__init__()  #初始化父类 
         self.execution_order = [] #记录任务执行顺序
+        self.finshed_job=[]
         self.quantum_list = [] # 每个队列的时间片大小
         self.multi_level_priority_queue = [] # 多级队列
         self.executed = 0  # 已经完成的请求数量
@@ -171,6 +172,7 @@ def simulate_forward(iter_count,first_iter_time,next_iter_time, job, scheduler,t
             scheduler.ave_jct.append(round(jct,4))
             scheduler.result.append((job.j_id, round(jct,4)))
             scheduler.executed += 1
+            scheduler.finshed_job.append(job.j_id)
             return
         else:#任务未结束，需要进入下一级队列
             time_n += next_iter_time*iteration_num / 100
@@ -181,12 +183,13 @@ def simulate_forward(iter_count,first_iter_time,next_iter_time, job, scheduler,t
 #主程序启动示例代码
 if __name__ == '__main__':
     # 定义并启动发送请求的用户线程
-    generator = RequestGenerator(arrival_rate=10)
+    arrival_rate=100
+    first_quantum=100
+    quantum_rate=8
+    queue_num=3
+    generator = RequestGenerator(arrival_rate)
     generator.start()#把请求的对象放入request_queue中
 
-    first_quantum=100
-    quantum_rate=2
-    queue_num=3
     # 定义并启动调度器线程 这里定义了一个skip-join mlfq调度器 并且给出了第一个时间片大小，时间片增长率，队列数量
     scheduler = SkipJoinMLFQScheduler(first_quantum,quantum_rate,queue_num)
     for i in range(request_queue.qsize()): 
@@ -206,10 +209,10 @@ if __name__ == '__main__':
 
     job_ids = range(JOB_NUM)
     jct_values = [scheduler.ave_jct[index] for index in job_ids]
-    arrival_rate=10
     plt.figure(figsize=(10, 5))
-    plt.bar(job_ids, jct_values, color='skyblue')
-    plt.xlabel('Job ID')
+    sorted_jct_values = sorted(jct_values)
+    plt.bar(job_ids, sorted_jct_values, color='red')
+    plt.xlabel('Job Finished')
     plt.ylabel('JCT (seconds)')
-    plt.title('Job Completion Time (JCT) for Each Job    Average JCT: {:.2f}   arrival_rate: {:.2f}'.format(average_jct, arrival_rate))
+    plt.title('Average JCT: {:.2f} first_quantum: {:.2f} quantum_rate: {:.2f} queue_num:{:.2f}'.format(average_jct, first_quantum, quantum_rate, queue_num))
     plt.show()
